@@ -41,4 +41,15 @@ public final class Constant extends Component
 	{
 		return toDot("doublecircle", "grey", Boolean.toString(value).toUpperCase());
 	}
+
+	@Override
+	public void onInputUpdated(Component updatedInput) {
+		// TODO Auto-generated method stub
+	}
+
+	@Override
+	public void forceUpdate() {
+		// TODO Auto-generated method stub
+
+	}
 }

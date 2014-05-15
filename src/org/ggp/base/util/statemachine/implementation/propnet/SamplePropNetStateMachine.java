@@ -14,7 +14,7 @@ import org.ggp.base.util.gdl.grammar.GdlSentence;
 import org.ggp.base.util.propnet.architecture.Component;
 import org.ggp.base.util.propnet.architecture.PropNet;
 import org.ggp.base.util.propnet.architecture.components.Proposition;
-import org.ggp.base.util.propnet.factory.PropNetFactory;
+import org.ggp.base.util.propnet.factory.OptimizingPropNetFactory;
 import org.ggp.base.util.statemachine.MachineState;
 import org.ggp.base.util.statemachine.Move;
 import org.ggp.base.util.statemachine.Role;
@@ -34,26 +34,57 @@ public class SamplePropNetStateMachine extends StateMachine {
     /** The player roles */
     private List<Role> roles;
 
+    private MachineState initialState = null;
+
     /**
      * Initializes the PropNetStateMachine. You should compute the topological
      * ordering here. Additionally you may compute the initial state here, at
      * your discretion.
      */
-    @Override
-    public void initialize(List<Gdl> description) {
-        propNet = PropNetFactory.create(description);
-        roles = propNet.getRoles();
-        ordering = getOrdering();
-    }
+	@Override
+	public void initialize(List<Gdl> description) {
+		try {
+			this.beginProfile();
+
+			propNet = OptimizingPropNetFactory.create(description);
+			roles = propNet.getRoles();
+			ordering = getOrdering();
+
+			Proposition initProp = propNet.getInitProposition();
+
+			for (Proposition p : ordering) {
+				p.forceUpdate();
+			}
+
+			initProp.setValue(true, false);
+
+			initialState = this.getStateFromBase();
+
+			initProp.setValue(false, false);
+
+			this.endProfile("initialize");
+		} catch (InterruptedException e) {
+			System.out.println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+					+ e.getMessage());
+		}
+	}
 
 	/**
-	 * Computes if the state is terminal. Should return the value
-	 * of the terminal proposition for the state.
+	 * Computes if the state is terminal. Should return the value of the
+	 * terminal proposition for the state.
 	 */
 	@Override
 	public boolean isTerminal(MachineState state) {
-		// TODO: Compute whether the MachineState is terminal.
-		return false;
+		this.beginProfile();
+
+		this.setBasePropositionsFor(state);
+		this.propagate();
+
+		Proposition terminalProp = propNet.getTerminalProposition();
+
+		this.endProfile("isTerminal");
+
+		return terminalProp.getValue();
 	}
 
 	/**
@@ -66,8 +97,29 @@ public class SamplePropNetStateMachine extends StateMachine {
 	@Override
 	public int getGoal(MachineState state, Role role)
 	throws GoalDefinitionException {
-		// TODO: Compute the goal for role in state.
-		return -1;
+		this.beginProfile();
+
+		this.setBasePropositionsFor(state);
+		this.propagate();
+
+		Set<Proposition> goalProps = propNet.getGoalPropositions().get(role);
+		Proposition goalProp = null;
+		for (Proposition g : goalProps) {
+			if (g.getValue()) {
+				if (goalProp == null) {
+					goalProp = g;
+				} else {
+					throw new GoalDefinitionException(state, role);
+				}
+			}
+		}
+
+		if (goalProp == null)
+			throw new GoalDefinitionException(state, role);
+
+		this.endProfile("getGoal");
+
+		return this.getGoalValue(goalProp);
 	}
 
 	/**
@@ -77,8 +129,63 @@ public class SamplePropNetStateMachine extends StateMachine {
 	 */
 	@Override
 	public MachineState getInitialState() {
-		// TODO: Compute the initial state.
-		return null;
+		return initialState;
+	}
+
+	private void setBasePropositionsFor(MachineState state) {
+		this.beginProfile();
+
+		Set<GdlSentence> sentences = state.getContents();
+		Map<GdlSentence, Proposition> baseMaps = propNet.getBasePropositions();
+		Set<Map.Entry<GdlSentence, Proposition>> baseMapEntries = baseMaps.entrySet();
+
+		for (Map.Entry<GdlSentence, Proposition> e : baseMapEntries) {
+			e.getValue().setValue(false, true);
+		}
+
+		for (GdlSentence s : sentences) {
+			baseMaps.get(s).setValue(true, true);
+		}
+
+		int count = 0;
+		for (Map.Entry<GdlSentence, Proposition> e : baseMapEntries) {
+			if (e.getValue().getIsChanged())
+				++count;
+		}
+
+		this.endProfile("setBasePropositionsFor");
+	}
+
+	private void setInputPropositionsFor(List<Move> moves) {
+		this.beginProfile();
+
+		Map<GdlSentence, Proposition> inputProps = propNet.getInputPropositions();
+		Set<Map.Entry<GdlSentence, Proposition>> inputPropEntries = inputProps.entrySet();
+		for (Map.Entry<GdlSentence, Proposition> e : inputPropEntries) {
+			e.getValue().setValue(false, true);
+		}
+
+		List<GdlSentence> moveSentences = this.toDoes(moves);
+		for (GdlSentence s : moveSentences) {
+			inputProps.get(s).setValue(true, true);
+		}
+
+		this.endProfile("setInputPropositionsFor");
+	}
+
+	private void propagate()
+	{
+		Map<GdlSentence, Proposition> baseMaps = propNet.getBasePropositions();
+		Set<Map.Entry<GdlSentence, Proposition>> baseMapEntries = baseMaps.entrySet();
+		for (Map.Entry<GdlSentence, Proposition> e : baseMapEntries) {
+			e.getValue().propagate();
+		}
+
+		Map<GdlSentence, Proposition> inputProps = propNet.getInputPropositions();
+		Set<Map.Entry<GdlSentence, Proposition>> inputPropEntries = inputProps.entrySet();
+		for (Map.Entry<GdlSentence, Proposition> e : inputPropEntries) {
+			e.getValue().propagate();
+		}
 	}
 
 	/**
@@ -87,8 +194,29 @@ public class SamplePropNetStateMachine extends StateMachine {
 	@Override
 	public List<Move> getLegalMoves(MachineState state, Role role)
 	throws MoveDefinitionException {
-		// TODO: Compute legal moves.
-		return null;
+		this.beginProfile();
+
+		this.setBasePropositionsFor(state);
+		this.propagate();
+
+		Set<Proposition> legalProps = propNet.getLegalPropositions().get(role);
+		Set<Proposition> trues = new HashSet<Proposition>();
+		for (Proposition p : legalProps) {
+			if (p.getValue())
+				trues.add(p);
+		}
+
+		Map<Proposition, Proposition> legalInputMaps = propNet.getLegalInputMap();
+		List<Move> legalMoves = new ArrayList<Move>();
+
+		for (Proposition p : trues) {
+			Proposition legalInputProp = legalInputMaps.get(p);
+			legalMoves.add(getMoveFromProposition(legalInputProp));
+		}
+
+		this.endProfile("getLegalMoves");
+
+		return legalMoves;
 	}
 
 	/**
@@ -97,8 +225,15 @@ public class SamplePropNetStateMachine extends StateMachine {
 	@Override
 	public MachineState getNextState(MachineState state, List<Move> moves)
 	throws TransitionDefinitionException {
-		// TODO: Compute the next state.
-		return null;
+		this.beginProfile();
+
+		this.setBasePropositionsFor(state);
+		this.setInputPropositionsFor(moves);
+		this.propagate();
+
+		this.endProfile("getNextState");
+
+		return this.getStateFromBase();
 	}
 
 	/**
@@ -126,9 +261,55 @@ public class SamplePropNetStateMachine extends StateMachine {
 		// All of the propositions in the PropNet.
 		List<Proposition> propositions = new ArrayList<Proposition>(propNet.getPropositions());
 
-	    // TODO: Compute the topological ordering.
+	    // Compute the topological ordering.
+		List<Proposition> bases = new ArrayList<Proposition>(propNet.getBasePropositions().values());
+		List<Proposition> inputs = new ArrayList<Proposition>(propNet.getInputPropositions().values());
+
+		Proposition init = propNet.getInitProposition();
+
+		List<Proposition> addingPropositions = new LinkedList<Proposition>();
+
+		order.addAll(bases);
+		order.addAll(inputs);
+		order.add(init);
+
+		propositions.removeAll(bases);
+		propositions.removeAll(inputs);
+		propositions.remove(init);
+
+		while (!propositions.isEmpty()) {
+			for (Proposition p : propositions) {
+				boolean isNextLevelProp = this.isPropositionIn(order,
+						p.getSingleInput());
+
+				if (isNextLevelProp)
+					addingPropositions.add(p);
+			}
+
+			order.addAll(addingPropositions);
+			propositions.removeAll(addingPropositions);
+			addingPropositions.clear();
+		}
+
+		order.removeAll(bases);
+		order.removeAll(inputs);
+		order.remove(init);
 
 		return order;
+	}
+
+	private boolean isPropositionIn(List<Proposition> propositionList, Component c) {
+		if (c instanceof Proposition) {
+			return propositionList.contains(c);
+		} else {
+			Set<Component> componentInputs = c.getInputs();
+			for (Component ci : componentInputs) {
+				if (!isPropositionIn(propositionList, ci))
+					return false;
+			}
+
+			return true;
+		}
 	}
 
 	/* Already implemented for you */
@@ -196,7 +377,7 @@ public class SamplePropNetStateMachine extends StateMachine {
 		Set<GdlSentence> contents = new HashSet<GdlSentence>();
 		for (Proposition p : propNet.getBasePropositions().values())
 		{
-			p.setValue(p.getSingleInput().getValue());
+			p.setValue(p.getSingleInput().getValue(), true);
 			if (p.getValue())
 			{
 				contents.add(p.getName());

@@ -27,4 +27,19 @@ public final class Transition extends Component
 	{
 		return toDot("box", "grey", "TRANSITION");
 	}
+
+	@Override
+	public void onInputUpdated(Component updatedInput) {
+		// TODO Auto-generated method stub
+
+	}
+
+	@Override
+	public void forceUpdate() {
+		// TODO Auto-generated method stub
+		Component c = getSingleInput();
+
+		if (!(c instanceof Proposition))
+			c.forceUpdate();
+	}
 }

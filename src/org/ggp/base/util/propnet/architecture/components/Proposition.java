@@ -1,5 +1,7 @@
 package org.ggp.base.util.propnet.architecture.components;
 
+import java.util.Set;
+
 import org.ggp.base.util.gdl.grammar.GdlSentence;
 import org.ggp.base.util.propnet.architecture.Component;
 
@@ -13,6 +15,12 @@ public final class Proposition extends Component
 	private GdlSentence name;
 	/** The value of the Proposition. */
 	private boolean value;
+
+	private boolean isChanged = false;
+
+	public boolean getIsChanged() {
+		return isChanged;
+	}
 
 	/**
 	 * Creates a new Proposition with name <tt>name</tt>.
@@ -66,9 +74,33 @@ public final class Proposition extends Component
 	 * @param value
 	 *            The new value of the Proposition.
 	 */
-	public void setValue(boolean value)
+	public void setValue(boolean value, boolean isPropagationDeferred)
 	{
-		this.value = value;
+		if (value != this.value) {
+			this.value = value;
+			isChanged = !isChanged;
+
+			if (!isPropagationDeferred) {
+				propagate();
+			}
+		}
+	}
+
+	@Override
+	public void onInputUpdated(Component updatedInput) {
+		this.setValue(updatedInput.getValue(), false);
+	}
+
+	public void propagate()
+	{
+		if (isChanged) {
+			Set<Component> outputs = this.getOutputs();
+			for (Component o : outputs) {
+				o.onInputUpdated(this);
+			}
+
+			isChanged = false;
+		}
 	}
 
 	/**
@@ -78,5 +110,17 @@ public final class Proposition extends Component
 	public String toString()
 	{
 		return toDot("circle", value ? "red" : "white", name.toString());
+	}
+
+	@Override
+	public void forceUpdate() {
+		// TODO Auto-generated method stub
+		Component i = this.getSingleInput();
+
+		if (!(i instanceof Proposition)) {
+			i.forceUpdate();
+		}
+
+		value = i.getValue();
 	}
 }

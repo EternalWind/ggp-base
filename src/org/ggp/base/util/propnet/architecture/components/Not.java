@@ -1,5 +1,7 @@
 package org.ggp.base.util.propnet.architecture.components;
 
+import java.util.Set;
+
 import org.ggp.base.util.propnet.architecture.Component;
 
 /**
@@ -26,5 +28,23 @@ public final class Not extends Component
 	public String toString()
 	{
 		return toDot("invtriangle", "grey", "NOT");
+	}
+
+	@Override
+	public void onInputUpdated(Component updatedInput) {
+		// TODO Auto-generated method stub
+		Set<Component> outputs = this.getOutputs();
+		for (Component o : outputs) {
+			o.onInputUpdated(this);
+		}
+	}
+
+	@Override
+	public void forceUpdate() {
+		// TODO Auto-generated method stub
+		Component i = getSingleInput();
+
+		if (!(i instanceof Proposition))
+			i.forceUpdate();
 	}
 }
